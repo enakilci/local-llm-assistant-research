@@ -1,0 +1,4 @@
+dspy
+numpy
+pydantic
+Wikipedia-API
