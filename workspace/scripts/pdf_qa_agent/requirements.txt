@@ -1,0 +1,3 @@
+dspy
+PyPDF2 
+ollama

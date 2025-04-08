@@ -1,0 +1,15 @@
+# Examples
+
+Without saving text:
+python pdf_qa_agent_v2.py document.pdf -q "What is the conclusion?" -p "10"
+
+Saving extracted text:
+python pdf_qa_agent_v2.py document.pdf -q "Summarize page 2." -p "2" -o extracted_page_2.txt
+
+Without saving text:
+python pdf_qa_agent_v2.py report.pdf -q "Details about Method A?" -p "5-7" -o method_a_details.txt
+
+python pdf_qa_agent_cot.py /home/enakilci/Dev/local-llm-assistant-research/workspace/scripts/pdf_qa_agent/data/btj-5-24-taming-the-traffic-tides.pdf -q "From which university did the author graduate?" -p "1,2" -o method_a_details.txt
+
+
+python pdf_qa_agent_cot.py /home/enakilci/Dev/local-llm-assistant-research/workspace/scripts/pdf_qa_agent/data/btj-5-24-taming-the-traffic-tides.pdf -q "What is the author's occupation? Please provide your reasoning with the answer." -p "1,2" -o method_a_details.txt
