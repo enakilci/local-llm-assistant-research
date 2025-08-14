@@ -1,0 +1,8 @@
+# Data Files
+*.json
+*.jsonl
+# log files
+*.log
+# generated content
+pdf_qa_agent/context/*
+pdf_qa_agent/context/*

@@ -27,7 +27,8 @@ stream_handler.setFormatter(log_formatter)
 logger.addHandler(stream_handler)
 
 # --- Configuration ---
-OLLAMA_MODEL_NAME = 'ollama_chat/deepseek-r1:14b'
+# OLLAMA_MODEL_NAME = 'ollama_chat/deepseek-r1:14b'
+OLLAMA_MODEL_NAME = 'ollama_chat/gpt-oss:20b'
 OLLAMA_API_BASE = 'http://localhost:11434'
 # Context window size requested (16384 tokens).
 # Ensure your Ollama setup and the model version can handle this.
@@ -107,14 +108,15 @@ def extract_text_from_pdf(pdf_path: str, page_numbers: list[int]) -> str:
 def save_text_to_file(text: str, output_path: str):
     """Saves the given text content to a file."""
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
+        os.makedirs("context", exist_ok=True)
+        output_path_full = os.path.join("context", output_path)
+        with open(output_path_full, 'w', encoding='utf-8') as f:
             f.write(text)
-        logging.info(f"Successfully saved extracted text to: {output_path}")
+        logging.info(f"Successfully saved extracted text to: {output_path_full}")
     except IOError as e:
-        logging.error(f"Could not write extracted text to file '{output_path}': {e}")
+        logging.error(f"Could not write extracted text to file '{output_path_full}': {e}")
     except Exception as e:
-        logging.exception(f"An unexpected error occurred while saving text to '{output_path}'.")
-
+        logging.exception(f"An unexpected error occurred while saving text to '{output_path_full}'.")
 
 # --- DSPy Signature Definition ---
 class PdfQA(dspy.Signature):
@@ -222,6 +224,9 @@ def main():
         # Execute the ChainOfThought prediction
         result = pdf_qa_agent(context=context, question=args.question)
         
+        # Log whole output at DEBUG level to avoid cluttering INFO logs
+        logging.debug(f"--- Model Output Unfiltered ---\n{result}")
+        
         print(result)
 
         # --- Log Rationale (Thinking Process) ---
@@ -229,7 +234,8 @@ def main():
             logging.info("--- LLM Rationale (Thinking) ---")
             # Log rationale multi-line for readability
             for line in result.reasoning.strip().split('\n'):
-                logging.info(f"Rationale: {line}")
+                logging.info(f"{line}")
+            print("-" * 50)
         else:
             logging.info("--- No explicit rationale provided by LLM ---")
 
@@ -237,8 +243,8 @@ def main():
         logging.info("--- LLM Final Answer ---")
         # Log answer multi-line for readability
         for line in result.answer.strip().split('\n'):
-            logging.info(f"Answer: {line}")
-
+            logging.info(f"{line}")
+        print("-" * 50)
         # Optional: Inspect the full interaction history (might be verbose)
         logging.debug("--- LLM Interaction History (Debug) ---")
         try:
