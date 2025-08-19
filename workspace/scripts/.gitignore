@@ -5,4 +5,4 @@
 *.log
 # generated content
 pdf_qa_agent/context/*
-pdf_qa_agent/context/*
+pdf_qa_agent/data/*

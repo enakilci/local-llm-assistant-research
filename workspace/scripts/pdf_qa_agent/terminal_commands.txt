@@ -18,3 +18,7 @@ python pdf_qa_agent_cot.py /home/enakilci/Dev/local-llm-assistant-research/works
 ## Langchain commands
 
 python pdf_qa_agent_cot_langchain.py /home/enakilci/Dev/local-llm-assistant-research/workspace/scripts/pdf_qa_agent/data/AL5_LTS_20250424_openpyxl2.pdf -q "List every vessel mentioned in the document. Provide me a list." -p "1,2" -o method_a_details.txt
+
+## Streamlit commands
+streamlit run pdf_qa_agent_gui.py 
+streamlit run pdf_qa_agent_gui2.py 
