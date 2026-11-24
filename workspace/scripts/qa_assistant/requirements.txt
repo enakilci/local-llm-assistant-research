@@ -7,3 +7,4 @@ langchain-ollama
 langchain-core
 streamlit
 beautifulsoup4
+docling

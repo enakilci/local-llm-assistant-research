@@ -1,5 +1,6 @@
 import streamlit as st
 import PyPDF2
+from docling.document_converter import DocumentConverter
 import os
 import logging
 import tempfile
@@ -8,7 +9,8 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 import time
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Union
 from bs4 import BeautifulSoup
 
 # Page configuration
@@ -54,6 +56,7 @@ st.markdown("""
 
 # Configuration
 OLLAMA_MODEL_NAME = 'gpt-oss:20b'
+# OLLAMA_MODEL_NAME = 'ollama_chat/deepseek-r1:14b'
 OLLAMA_API_BASE = 'http://localhost:11434'
 REQUESTED_CONTEXT_SIZE = 1024
 
@@ -169,6 +172,79 @@ def extract_text_from_pdf(pdf_file, page_numbers: List[int]) -> tuple[str, int]:
         logger.error(f"Error extracting text from PDF: {e}")
         return f"Error reading PDF file: {e}", 0
 
+def extract_text_from_spreadsheet(file: Union[str, object], sheet_names: List[str] = None) -> tuple[str, int]:
+    """
+    Extract data from Excel (xlsx, xls) or CSV files and export as markdown.
+    Args:
+        file: Either a file path (str) or a file object with read() method
+        sheet_names: List of sheet names to extract (for Excel files, optional)
+    Returns: (extracted_data_as_markdown, total_sheets_or_1_for_csv)
+    """
+    try:
+        # Handle both file path (string) and file object cases
+        if isinstance(file, str):
+            source_path = file
+            cleanup_temp = False
+            file_extension = os.path.splitext(file)[1].lower()
+        else:
+            # File object, save to temporary location
+            # Try to get original filename if available
+            if hasattr(file, 'name'):
+                file_extension = os.path.splitext(file.name)[1].lower()
+            else:
+                # Default to xlsx if extension unknown
+                file_extension = '.xlsx'
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+                tmp_file.write(file.read())
+                source_path = tmp_file.name
+                cleanup_temp = True
+
+        markdown_content = ""
+        total_sheets = 1
+
+        # Convert PDF to markdown using docling
+        converter = DocumentConverter()
+        doc = converter.convert(source_path).document
+        
+        # Export to markdown
+        markdown_content = doc.export_to_markdown()
+        
+        # Create context folder if it doesn't exist
+        context_folder = "context"
+        os.makedirs(context_folder, exist_ok=True)
+
+        # Create meaningful filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if isinstance(file, str):
+            base_name = os.path.splitext(os.path.basename(file))[0]
+        else:
+            base_name = f"extracted_spreadsheet_{file_extension[1:]}"
+
+        markdown_filename = os.path.join(context_folder, f"{base_name}_{timestamp}_extracted.md")
+        
+        # Save markdown locally
+        with open(markdown_filename, 'w', encoding='utf-8') as md_file:
+            md_file.write(markdown_content)
+        
+        print(f"✅ Markdown saved to: {markdown_filename}")
+        
+        # Clean up temporary file if we created one
+        if cleanup_temp:
+            os.unlink(source_path)
+        
+        return markdown_content, total_sheets
+        
+    except Exception as e:
+        logger.error(f"Error extracting data from spreadsheet: {e}")
+        # Clean up temporary file if it exists and we created it
+        if 'cleanup_temp' in locals() and cleanup_temp and 'source_path' in locals():
+            try:
+                os.unlink(source_path)
+            except:
+                pass
+        return f"Error reading spreadsheet file: {e}", 0
+
 def parse_page_numbers(pages_str: str, max_pages: int) -> Optional[List[int]]:
     """Parse page number string and return 0-indexed list"""
     pages = set()
@@ -206,7 +282,13 @@ def get_response(question: str, context: str, context_type: str) -> str:
         return "Error: Language model not initialized. Please check your Ollama server."
     
     # Create prompt template with context type awareness
-    context_description = "PDF document" if context_type == "pdf" else "HTML document"
+    context_descriptions = {
+        "pdf": "PDF document",
+        "html": "HTML document", 
+        "spreadsheet": "spreadsheet document"
+    }
+    
+    context_description = context_descriptions.get(context_type, "document")
     
     qa_prompt = ChatPromptTemplate.from_messages([
         ("system", f"You are an expert AI assistant that answers questions based strictly on provided context from a {context_description}."),
@@ -296,9 +378,9 @@ with col1:
     # Document type selector
     doc_type = st.radio(
         "Choose document type:",
-        ["PDF", "HTML"],
+        ["PDF", "Spreadsheet", "HTML"],
         horizontal=True,
-        help="Select PDF for PDF documents or HTML for HTML files"
+        help="Select PDF for PDF documents, Spreadsheet for Excel/CSV files or HTML for HTML files"
     )
     
     if doc_type == "PDF":
@@ -379,7 +461,43 @@ with col1:
                             st.text_area("Extracted text preview:", preview_text, height=200, disabled=True)
                     else:
                         st.error(extracted_text)
-    
+
+    elif doc_type == "Spreadsheet":  # Spreadsheet
+        # Clear other context if switching to Spreadsheet
+        if st.session_state.context_type in ["pdf", "html"]:
+            clear_context()
+        
+        uploaded_file = st.file_uploader(
+            "Choose a spreadsheet file",
+            type=["xlsx", "xls", "csv"],
+            help="Drag and drop your Excel or CSV file here or click to browse"
+        )
+        
+        if uploaded_file is not None:
+            if st.session_state.context_filename != uploaded_file.name or st.session_state.context_type != "spreadsheet":
+                # New file uploaded or switching from other type
+                clear_context()
+                st.session_state.context_filename = uploaded_file.name
+                st.session_state.context_type = "spreadsheet"
+                
+                st.success(f"✅ Spreadsheet file uploaded: **{uploaded_file.name}**")
+            
+            # Extract text button for Spreadsheet
+            if st.button("📊 Extract Data from Spreadsheet", type="primary"):
+                with st.spinner("Extracting data from spreadsheet..."):
+                    extracted_text, total_sheets = extract_text_from_spreadsheet(uploaded_file)
+                    if not extracted_text.startswith("Error:"):
+                        st.session_state.context_text = extracted_text
+                        st.session_state.total_pages = total_sheets  # Store sheet count
+                        st.success(f"✅ Data extracted from spreadsheet ({total_sheets} sheet{'s' if total_sheets != 1 else ''})")
+                        
+                        # Show preview
+                        with st.expander("📋 Data Preview", expanded=False):
+                            preview_text = extracted_text[:1000] + "..." if len(extracted_text) > 1000 else extracted_text
+                            st.text_area("Extracted data preview:", preview_text, height=200, disabled=True)
+                    else:
+                        st.error(extracted_text)
+
     else:  # HTML
         # Clear PDF context if switching to HTML
         if st.session_state.context_type == "pdf":
@@ -427,7 +545,12 @@ with col2:
     
     if st.session_state.context_text:
         # Display document info
-        context_icon = "📄" if st.session_state.context_type == "pdf" else "🌐"
+        context_icons = {
+            "pdf": "📄",
+            "spreadsheet": "📊",
+            "html": "🌐"            
+        }
+        context_icon = context_icons.get(st.session_state.context_type, "📄")
         st.info(f"{context_icon} **Current document**: {st.session_state.context_filename} ({st.session_state.context_type.upper()})")
         
         # Display chat messages
@@ -461,7 +584,7 @@ with col2:
             st.rerun()
             
     else:
-        st.info("👆 Please upload a document (PDF or HTML) and extract text to start chatting!")
+        st.info("👆 Please upload a document (PDF, Spreadsheet or HTML) and extract content to start chatting!")
 
 # Footer
 st.markdown("---")
